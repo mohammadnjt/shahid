@@ -7,6 +7,7 @@ import {
   Animated,
   Dimensions,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,7 +18,12 @@ import { BlurView } from 'expo-blur';
 import bg from '../assets/images/islamic-background.jpg';
 import voice from '../assets/1.mp3';
 
-const { width } = Dimensions.get('window');
+const { width: screenWidth } = Dimensions.get('window');
+// محدود کردن عرض برای وب و دسکتاپ
+const MAX_WIDTH = 500;
+const isWeb = Platform.OS === 'web';
+const containerWidth = isWeb ? Math.min(screenWidth * 0.9, MAX_WIDTH) : screenWidth;
+const albumSize = isWeb ? Math.min(containerWidth * 0.6, 300) : containerWidth * 0.75;
 
 export default function RadioPlayerScreen() {
   const [sound, setSound] = useState(null);
@@ -262,102 +268,109 @@ export default function RadioPlayerScreen() {
   return (
     <ImageBackground source={bg} style={styles.container} resizeMode="cover">
       <LinearGradient colors={['rgba(0,0,0,0.7)', 'rgba(0,0,0,0.9)']} style={styles.overlay}>
-        {/* Header */}
-        <Animatable.View animation="fadeInDown" style={styles.header}>
-          <View style={styles.headerIcon}>
-            <Radio size={24} color="#D4AF37" />
-          </View>
-          <Text style={styles.headerTitle}>رادیو اسلامی</Text>
-        </Animatable.View>
-        {/* Album Art */}
-        <Animatable.View animation="fadeIn" delay={300} style={styles.albumContainer}>
-          <Animated.View
-            style={[
-              styles.albumWrapper,
-              {
-                transform: [{ rotate }, { scale: pulseAnim }],
-              },
-            ]}
-          >
-            <View style={styles.vinylOuter}>
-              <View style={styles.vinylMiddle}>
-                <View style={styles.vinylInner}>
-                  <ImageBackground
-                    source={typeof track.image === 'string' ? { uri: track.image } : track.image}
-                    style={styles.albumArt}
-                    imageStyle={styles.albumArtImage}
-                  >
-                    <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.5)']} style={styles.albumGradient} />
-                  </ImageBackground>
+        <View style={styles.contentWrapper}>
+          {/* Header */}
+          <Animatable.View animation="fadeInDown" style={styles.header}>
+            <View style={styles.headerIcon}>
+              <Radio size={24} color="#D4AF37" />
+            </View>
+            <Text style={styles.headerTitle}>رادیو اسلامی</Text>
+          </Animatable.View>
+          
+          {/* Album Art */}
+          <Animatable.View animation="fadeIn" delay={300} style={styles.albumContainer}>
+            <Animated.View
+              style={[
+                styles.albumWrapper,
+                {
+                  transform: [{ rotate }, { scale: pulseAnim }],
+                },
+              ]}
+            >
+              <View style={styles.vinylOuter}>
+                <View style={styles.vinylMiddle}>
+                  <View style={styles.vinylInner}>
+                    <ImageBackground
+                      source={typeof track.image === 'string' ? { uri: track.image } : track.image}
+                      style={styles.albumArt}
+                      imageStyle={styles.albumArtImage}
+                    >
+                      <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.5)']} style={styles.albumGradient} />
+                    </ImageBackground>
+                  </View>
                 </View>
               </View>
+            </Animated.View>
+            
+            {/* Decorative Elements */}
+            <View style={styles.decorativeElements}>
+              <Animatable.Text animation="pulse" iterationCount="infinite" style={styles.decorativeStar}>
+                ✨
+              </Animatable.Text>
+              <Animatable.Text
+                animation="pulse"
+                iterationCount="infinite"
+                delay={500}
+                style={[styles.decorativeStar, styles.star2]}
+              >
+                ⭐
+              </Animatable.Text>
+              <Animatable.Text
+                animation="pulse"
+                iterationCount="infinite"
+                delay={1000}
+                style={[styles.decorativeStar, styles.star3]}
+              >
+                ✨
+              </Animatable.Text>
             </View>
-          </Animated.View>
-          {/* Decorative Elements */}
-          <View style={styles.decorativeElements}>
-            <Animatable.Text animation="pulse" iterationCount="infinite" style={styles.decorativeStar}>
-              ✨
-            </Animatable.Text>
-            <Animatable.Text
-              animation="pulse"
-              iterationCount="infinite"
-              delay={500}
-              style={[styles.decorativeStar, styles.star2]}
-            >
-              ⭐
-            </Animatable.Text>
-            <Animatable.Text
-              animation="pulse"
-              iterationCount="infinite"
-              delay={1000}
-              style={[styles.decorativeStar, styles.star3]}
-            >
-              ✨
-            </Animatable.Text>
+          </Animatable.View>
+          
+          {/* Track Info */}
+          <Animatable.View animation="fadeInUp" delay={500} style={styles.trackInfo}>
+            <BlurView intensity={30} tint="dark" style={styles.infoCard}>
+              <Text style={styles.trackTitle}>{track.title}</Text>
+              <Text style={styles.trackArtist}>{track.artist}</Text>
+            </BlurView>
+          </Animatable.View>
+          
+          {/* Progress Bar */}
+          <View style={styles.progressContainer}>
+            <TouchableOpacity ref={progressBarRef} activeOpacity={1} onPress={handleSeek} style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: `${progressPercentage}%` }]} />
+            </TouchableOpacity>
+            <View style={styles.timeContainer}>
+              <Text style={styles.timeText}>{formatTime(position)}</Text>
+              <Text style={styles.timeText}>{formatTime(duration)}</Text>
+            </View>
           </View>
-        </Animatable.View>
-        {/* Track Info */}
-        <Animatable.View animation="fadeInUp" delay={500} style={styles.trackInfo}>
-          <BlurView intensity={30} tint="dark" style={styles.infoCard}>
-            <Text style={styles.trackTitle}>{track.title}</Text>
-            <Text style={styles.trackArtist}>{track.artist}</Text>
-          </BlurView>
-        </Animatable.View>
-        {/* Progress Bar */}
-        <View style={styles.progressContainer}>
-          <TouchableOpacity ref={progressBarRef} activeOpacity={1} onPress={handleSeek} style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${progressPercentage}%` }]} />
-          </TouchableOpacity>
-          <View style={styles.timeContainer}>
-            <Text style={styles.timeText}>{formatTime(position)}</Text>
-            <Text style={styles.timeText}>{formatTime(duration)}</Text>
-          </View>
+          
+          {/* Controls */}
+          <Animatable.View animation="fadeInUp" delay={700} style={styles.controls}>
+            <TouchableOpacity style={styles.controlButton} onPress={toggleMute}>
+              {isMuted ? <VolumeX size={28} color="#D4AF37" /> : <Volume2 size={28} color="#D4AF37" />}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.playButton}
+              onPress={handlePlayPause}
+              disabled={isLoading}
+              activeOpacity={0.8}
+            >
+              <LinearGradient colors={['#D4AF37', '#C19A2E', '#A88728']} style={styles.playButtonGradient}>
+                {isLoading ? (
+                  <ActivityIndicator size="large" color="#1A1A1A" />
+                ) : isPlaying ? (
+                  <Pause size={36} color="#1A1A1A" fill="#1A1A1A" />
+                ) : (
+                  <Play size={36} color="#1A1A1A" fill="#1A1A1A" />
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.controlButton} onPress={() => handleNext(isPlaying)}>
+              <SkipForward size={32} color="#D4AF37" />
+            </TouchableOpacity>
+          </Animatable.View>
         </View>
-        {/* Controls */}
-        <Animatable.View animation="fadeInUp" delay={700} style={styles.controls}>
-          <TouchableOpacity style={styles.controlButton} onPress={toggleMute}>
-            {isMuted ? <VolumeX size={28} color="#D4AF37" /> : <Volume2 size={28} color="#D4AF37" />}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.playButton}
-            onPress={handlePlayPause}
-            disabled={isLoading}
-            activeOpacity={0.8}
-          >
-            <LinearGradient colors={['#D4AF37', '#C19A2E', '#A88728']} style={styles.playButtonGradient}>
-              {isLoading ? (
-                <ActivityIndicator size="large" color="#1A1A1A" />
-              ) : isPlaying ? (
-                <Pause size={36} color="#1A1A1A" fill="#1A1A1A" />
-              ) : (
-                <Play size={36} color="#1A1A1A" fill="#1A1A1A" />
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.controlButton} onPress={() => handleNext(isPlaying)}>
-            <SkipForward size={32} color="#D4AF37" />
-          </TouchableOpacity>
-        </Animatable.View>
       </LinearGradient>
     </ImageBackground>
   );
@@ -371,6 +384,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 40,
     paddingBottom: 40,
+    alignItems: 'center',
+  },
+  contentWrapper: {
+    width: '100%',
+    maxWidth: isWeb ? MAX_WIDTH : '100%',
+    alignSelf: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -399,13 +418,13 @@ const styles = StyleSheet.create({
     marginVertical: 30,
   },
   albumWrapper: {
-    width: width * 0.75,
-    height: width * 0.75,
+    width: albumSize,
+    height: albumSize,
   },
   vinylOuter: {
     width: '100%',
     height: '100%',
-    borderRadius: width * 0.375,
+    borderRadius: albumSize / 2,
     backgroundColor: '#1A1A1A',
     justifyContent: 'center',
     alignItems: 'center',
@@ -418,7 +437,7 @@ const styles = StyleSheet.create({
   vinylMiddle: {
     width: '95%',
     height: '95%',
-    borderRadius: width * 0.36,
+    borderRadius: (albumSize * 0.95) / 2,
     backgroundColor: '#2A2A2A',
     justifyContent: 'center',
     alignItems: 'center',
@@ -428,7 +447,7 @@ const styles = StyleSheet.create({
   vinylInner: {
     width: '70%',
     height: '70%',
-    borderRadius: width * 0.26,
+    borderRadius: (albumSize * 0.7) / 2,
     overflow: 'hidden',
     borderWidth: 3,
     borderColor: '#D4AF37',
@@ -438,7 +457,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   albumArtImage: {
-    borderRadius: width * 0.26,
+    borderRadius: (albumSize * 0.7) / 2,
   },
   albumGradient: {
     flex: 1,
@@ -476,14 +495,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   trackTitle: {
-    fontSize: 24,
+    fontSize: isWeb ? 20 : 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
     textAlign: 'center',
     marginBottom: 8,
   },
   trackArtist: {
-    fontSize: 16,
+    fontSize: isWeb ? 14 : 16,
     color: '#D4AF37',
     textAlign: 'center',
   },
@@ -544,14 +563,5 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  playlistInfo: {
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  playlistText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontWeight: '600',
   },
 });

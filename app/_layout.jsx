@@ -17,8 +17,10 @@ function RootLayoutNav() {
 
     if (isFirstLaunch) {
       router.replace('/onboarding');
-    } else if (!user && !inAuthGroup) {
-      router.replace('/auth/login');
+    // } else if (!user && !inAuthGroup) {
+    } else if (!user && !inAuthGroup && !inTabsGroup) {
+      router.replace('/(tabs)');
+      // router.replace('/auth/login');
     } else if (user && !inTabsGroup) {
       router.replace('/(tabs)');
     }
