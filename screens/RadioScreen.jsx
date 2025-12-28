@@ -8,18 +8,18 @@ import {
   Dimensions,
   ActivityIndicator,
   Platform,
+  Alert,
 } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Animatable from 'react-native-animatable';
 import { Audio } from 'expo-av';
-import { Play, Pause, SkipForward, Volume2, VolumeX, Radio } from 'lucide-react-native';
+import { Play, Pause, SkipForward, Volume2, VolumeX, Radio, RefreshCw } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import bg from '../assets/images/islamic-background.jpg';
-import voice from '../assets/1.mp3';
+import { api } from '../utils/api';
 
 const { width: screenWidth } = Dimensions.get('window');
-// محدود کردن عرض برای وب و دسکتاپ
 const MAX_WIDTH = 500;
 const isWeb = Platform.OS === 'web';
 const containerWidth = isWeb ? Math.min(screenWidth * 0.9, MAX_WIDTH) : screenWidth;
@@ -34,39 +34,18 @@ export default function RadioPlayerScreen() {
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [playlist, setPlaylist] = useState([]);
+  const [loadingPlaylist, setLoadingPlaylist] = useState(true);
 
   const soundRef = useRef(null);
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const progressBarRef = useRef(null);
 
-  // لیست آهنگ‌ها
-  const playlist = [
-    {
-      id: 1,
-      title: 'ذلت بر ما شد حرام ،ماییم و شور مدام',
-      artist: 'مداح',
-      uri: voice,
-      image: require('../assets/images/r.jpeg'),
-    },
-    {
-      id: 2,
-      title: 'دعای کمیل',
-      artist: 'باسم الکربلائی',
-      uri: voice,
-      image: 'https://example.com/dua1.jpg',
-    },
-    {
-      id: 3,
-      title: 'مناجات با خدا',
-      artist: 'محمد اصفهانی',
-      uri: voice,
-      image: 'https://example.com/monajat1.jpg',
-    },
-  ];
-
   useEffect(() => {
     setupAudio();
+    fetchPlaylist();
+    
     return () => {
       if (soundRef.current) {
         soundRef.current.unloadAsync();
@@ -83,7 +62,39 @@ export default function RadioPlayerScreen() {
       stopRotation();
       stopPulse();
     }
-  }, [isPlaying, rotateAnim, pulseAnim]);
+  }, [isPlaying]);
+
+  const fetchPlaylist = async () => {
+    try {
+      setLoadingPlaylist(true);
+      const res = await api.getRaudio();
+      
+      if (res.status === 1 && res.list && res.list.length > 0) {
+        // تبدیل داده‌های API به فرمت playlist
+        const formattedPlaylist = res.list.map((item) => ({
+          id: item.id,
+          title: item.tit,
+          artist: 'رادیو اسلامی',
+          uri: item.media,
+          image: require('../assets/images/r.jpeg'), // تصویر پیش‌فرض
+        }));
+        
+        setPlaylist(formattedPlaylist);
+        
+        // اگر playlist خالی نیست، اولین آهنگ را تنظیم کن
+        if (formattedPlaylist.length > 0) {
+          setCurrentTrack(formattedPlaylist[0]);
+        }
+      } else {
+        Alert.alert('خطا', 'لیست پخش خالی است');
+      }
+    } catch (error) {
+      console.error('Error fetching playlist:', error);
+      Alert.alert('خطا', 'خطا در دریافت لیست پخش');
+    } finally {
+      setLoadingPlaylist(false);
+    }
+  };
 
   const setupAudio = async () => {
     try {
@@ -156,6 +167,7 @@ export default function RadioPlayerScreen() {
       return newSound;
     } catch (error) {
       console.error('Error loading audio:', error);
+      Alert.alert('خطا', 'خطا در بارگذاری فایل صوتی');
       throw error;
     } finally {
       setIsLoading(false);
@@ -181,6 +193,12 @@ export default function RadioPlayerScreen() {
 
   const handlePlayPause = async () => {
     try {
+      // اگر playlist خالی است
+      if (playlist.length === 0) {
+        Alert.alert('توجه', 'لیست پخش خالی است');
+        return;
+      }
+
       let currentSound = soundRef.current;
 
       if (!currentSound) {
@@ -206,6 +224,8 @@ export default function RadioPlayerScreen() {
 
   const handleNext = async (autoPlay = isPlaying) => {
     try {
+      if (playlist.length === 0) return;
+
       const nextIndex = (currentIndex + 1) % playlist.length;
       const nextTrack = playlist[nextIndex];
 
@@ -257,13 +277,49 @@ export default function RadioPlayerScreen() {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  const handleRefresh = () => {
+    fetchPlaylist();
+  };
+
   const rotate = rotateAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['0deg', '360deg'],
   });
 
-  const track = currentTrack || playlist[currentIndex];
+  const track = currentTrack || (playlist.length > 0 ? playlist[currentIndex] : null);
   const progressPercentage = duration > 0 ? Math.min(position / duration, 1) * 100 : 0;
+
+  // نمایش loading اولیه
+  if (loadingPlaylist) {
+    return (
+      <ImageBackground source={bg} style={styles.container} resizeMode="cover">
+        <LinearGradient colors={['rgba(0,0,0,0.7)', 'rgba(0,0,0,0.9)']} style={styles.overlay}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#D4AF37" />
+            <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+          </View>
+        </LinearGradient>
+      </ImageBackground>
+    );
+  }
+
+  // اگر playlist خالی است
+  if (playlist.length === 0) {
+    return (
+      <ImageBackground source={bg} style={styles.container} resizeMode="cover">
+        <LinearGradient colors={['rgba(0,0,0,0.7)', 'rgba(0,0,0,0.9)']} style={styles.overlay}>
+          <View style={styles.loadingContainer}>
+            <Radio size={48} color="#D4AF37" />
+            <Text style={styles.emptyText}>لیست پخش خالی است</Text>
+            <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
+              <RefreshCw size={24} color="#1A1A1A" />
+              <Text style={styles.refreshButtonText}>بارگذاری مجدد</Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+      </ImageBackground>
+    );
+  }
 
   return (
     <ImageBackground source={bg} style={styles.container} resizeMode="cover">
@@ -275,7 +331,15 @@ export default function RadioPlayerScreen() {
               <Radio size={24} color="#D4AF37" />
             </View>
             <Text style={styles.headerTitle}>رادیو اسلامی</Text>
+            {/* <TouchableOpacity style={styles.refreshIconButton} onPress={handleRefresh}>
+              <RefreshCw size={20} color="#D4AF37" />
+            </TouchableOpacity> */}
           </Animatable.View>
+
+          {/* Playlist Info */}
+          {/* <Text style={styles.playlistInfo}>
+            آهنگ {currentIndex + 1} از {playlist.length}
+          </Text> */}
           
           {/* Album Art */}
           <Animatable.View animation="fadeIn" delay={300} style={styles.albumContainer}>
@@ -291,7 +355,7 @@ export default function RadioPlayerScreen() {
                 <View style={styles.vinylMiddle}>
                   <View style={styles.vinylInner}>
                     <ImageBackground
-                      source={typeof track.image === 'string' ? { uri: track.image } : track.image}
+                      source={typeof track?.image === 'string' ? { uri: track.image } : track?.image}
                       style={styles.albumArt}
                       imageStyle={styles.albumArtImage}
                     >
@@ -329,8 +393,10 @@ export default function RadioPlayerScreen() {
           {/* Track Info */}
           <Animatable.View animation="fadeInUp" delay={500} style={styles.trackInfo}>
             <BlurView intensity={30} tint="dark" style={styles.infoCard}>
-              <Text style={styles.trackTitle}>{track.title}</Text>
-              <Text style={styles.trackArtist}>{track.artist}</Text>
+              <Text style={styles.trackTitle} numberOfLines={2}>
+                {track?.title || 'بدون عنوان'}
+              </Text>
+              <Text style={styles.trackArtist}>{track?.artist || 'رادیو اسلامی'}</Text>
             </BlurView>
           </Animatable.View>
           
@@ -366,8 +432,13 @@ export default function RadioPlayerScreen() {
                 )}
               </LinearGradient>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.controlButton} onPress={() => handleNext(isPlaying)}>
-              <SkipForward size={32} color="#D4AF37" />
+            <TouchableOpacity 
+              style={styles.controlButton} 
+              onPress={handleRefresh}
+              // onPress={() => handleNext(isPlaying)}
+              // disabled={playlist.length <= 1}
+            >
+              <SkipForward size={32} color={playlist.length <= 0 ? '#666' : '#D4AF37'} />
             </TouchableOpacity>
           </Animatable.View>
         </View>
@@ -391,11 +462,43 @@ const styles = StyleSheet.create({
     maxWidth: isWeb ? MAX_WIDTH : '100%',
     alignSelf: 'center',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#D4AF37',
+    marginTop: 12,
+  },
+  emptyText: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    marginTop: 16,
+    marginBottom: 24,
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#D4AF37',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 25,
+  },
+  refreshButtonText: {
+    fontSize: 16,
+    color: '#1A1A1A',
+    fontWeight: 'bold',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
+    position: 'relative',
   },
   headerIcon: {
     width: 40,
@@ -412,6 +515,24 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#D4AF37',
+  },
+  refreshIconButton: {
+    position: 'absolute',
+    right: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(212, 175, 55, 0.2)',
+    borderWidth: 1,
+    borderColor: '#D4AF37',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playlistInfo: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.7)',
+    textAlign: 'center',
+    marginBottom: 20,
   },
   albumContainer: {
     alignItems: 'center',

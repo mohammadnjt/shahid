@@ -1,3 +1,3 @@
-import HomeScreen from '../../screens/HomeScreen';
+import Banner from '../../screens/BannerGalleryScreen';
 
-export default HomeScreen;
+export default Banner;

@@ -23,54 +23,51 @@ const getBaseUrl = async () => {
 export const sendRequest = async (operation, additionalParams = {}) => {
   try {
     const baseUrl = "https://shahid-moqavemat.ir/modules.php";
-    // const baseUrl = await getBaseUrl();
-    // const fullUrl = `${baseUrl}/modules.php`;
 
-    // ایجاد FormData
-    const formData = new FormData();
-    
-    // پارامترهای ثابت
-    formData.append('newdb', 'ss');
-    formData.append('name', 'Icms');
-    formData.append('file', 'json');
-    formData.append('op', operation);
-    
-    // پارامترهای اضافی
-    Object.keys(additionalParams).forEach(key => {
-      if (additionalParams[key] !== undefined && additionalParams[key] !== null) {
-        formData.append(key, additionalParams[key]);
-      }
-    });
+    // -----------------------
+    // پارامترهای ثابت GET
+    // -----------------------
+    const params = {
+      newdb: "ss",
+      name: "Icms",
+      file: "json",
+      UID: "DEMO",
+      op: operation,
+      ...additionalParams
+    };
 
-    console.log('Sending request to:', baseUrl);
-    console.log('Operation:', operation);
-    console.log('Additional params:', additionalParams);
+    console.log("Sending GET request:", baseUrl);
+    console.log("Query params:", params);
 
-    const response = await apiClient.post(baseUrl, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-        'Accept': 'application/json',
-      },
+    const response = await apiClient.get(baseUrl, {
+      params,
+      // headers: {
+      //   "Accept": "application/json",
+      //   "Accept-Charset": "utf8",
+      // },
       timeout: 15000,
+      responseType: "arraybuffer",
     });
 
-    return response.data;
+
+    const text = new TextDecoder("utf-8").decode(new Uint8Array(response.data));
+    const json = JSON.parse(text);
+    return json;
+    // return response.data;
 
   } catch (error) {
-    console.error('Request failed:', error);
-    
+    console.error("Request failed:", error);
+
     if (error.response) {
-      // سرور پاسخ داده اما با خطا
       throw new Error(`خطای سرور: ${error.response.status}`);
     } else if (error.request) {
-      // درخواست ارسال شده اما پاسخی دریافت نشده
-      throw new Error('عدم اتصال به سرور');
+      throw new Error("عدم اتصال به سرور");
     } else {
-      // خطای دیگر
-      throw new Error(error.message || 'خطای ناشناخته');
+      throw new Error(error.message || "خطای ناشناخته");
     }
   }
 };
+
 
 // هوک برای استفاده در کامپوننت‌ها
 export const useApi = () => {
@@ -83,7 +80,16 @@ export const useApi = () => {
 export const api = {
   // گرفتن نسخه
   getVersion: () => sendRequest('m_version'),
-  
+
+  getBanner: (idp) => sendRequest('m_banner', idp?{idp}: {}),
+
+  getPost: (q) => sendRequest('m_search', {q}),
+  getPostDetail: (id) => sendRequest('m_details', {id}),
+
+  getRaudio: () => sendRequest('m_raudio'),
+
+  getBlog: () => sendRequest('m_blog'),
+
   // لاگین
   login: (username, mob) => sendRequest('m_login', {
     username,

@@ -1,15 +1,17 @@
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, RefreshControl, ImageBackground, useWindowDimensions, Modal, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, RefreshControl, ImageBackground, useWindowDimensions, Modal, Pressable, Platform } from 'react-native';
 import { useState, useEffect, useMemo } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Animatable from 'react-native-animatable';
-import { X, Eye } from 'lucide-react-native';
+import { X, Eye, ArrowRight, ArrowLeft } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import {api} from '../utils/api';
+import { bgImage } from '../utils/config';
+import { getQueryParam } from '../utils/helpers';
 
 // تنظیمات
 const SPACING = 10;
 const MIN_COLUMN_WIDTH = 200;
 const MAX_COLUMN_WIDTH = 350;
-
-const bg = { uri: 'https://images.unsplash.com/photo-1591604021695-0c69b7c05981?w=800' };
 
 const colors = {
   textLight: '#FFFFFF',
@@ -39,12 +41,16 @@ const borderRadius = {
 };
 
 export default function BannerGalleryScreen() {
+  const router = useRouter();
   const windowDimensions = useWindowDimensions();
   const [banners, setBanners] = useState([]);
+  const [idp, setIdp] = useState(null);
+  const [idpHistory, setIdpHistory] = useState([]); // ذخیره تاریخچه idp
   const [refreshing, setRefreshing] = useState(false);
   const [columns, setColumns] = useState([]);
   const [selectedBanner, setSelectedBanner] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // محاسبه تعداد ستون‌ها
   const columnConfig = useMemo(() => {
@@ -67,32 +73,70 @@ export default function BannerGalleryScreen() {
 
   useEffect(() => {
     fetchBanners();
-  }, []);
+  }, [idp]);
+
+  // دریافت ابعاد واقعی تصویر
+  const getImageDimensions = (uri) => {
+    return new Promise((resolve) => {
+      Image.getSize(
+        uri,
+        (width, height) => {
+          resolve({ width, height });
+        },
+        (error) => {
+          console.error('Error getting image size:', error);
+          // در صورت خطا، یک نسبت پیش‌فرض برمی‌گردانیم
+          resolve({ width: 1, height: 1.5 });
+        }
+      );
+    });
+  };
+
+  const fetchBanners = async () => {
+    setLoading(true);
+    try {
+      const res = await api.getBanner(idp);
+      console.log('res>>', res);
+
+      if(res.status === 1){
+        // دریافت ابعاد واقعی تمام تصاویر
+        const bannersWithDimensions = await Promise.all(
+          res.list.map(async (item) => {
+            const dimensions = await getImageDimensions(item.img);
+            
+            // محاسبه ارتفاع بر اساس aspect ratio واقعی تصویر
+            const aspectRatio = dimensions.height / dimensions.width;
+            const calculatedHeight = Math.floor(columnConfig.columnWidth * aspectRatio);
+            
+            return {
+              id: item.id,
+              image: item.img,
+              title: item.tit,
+              typ: item.typ,
+              height: calculatedHeight,
+              q: getQueryParam(item.par, 'q'),
+              originalWidth: dimensions.width,
+              originalHeight: dimensions.height
+            };
+          })
+        );
+        
+        setBanners(bannersWithDimensions);
+      } else {
+        console.error('Failed to fetch banners:', res.message);
+      }
+    } catch(err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (banners.length > 0) {
       redistributeColumns(banners);
     }
   }, [columnConfig.columnCount, banners.length]);
-
-  const fetchBanners = async () => {
-    try {
-      const response = await fetch('https://jsonplaceholder.typicode.com/photos?_limit=25');
-      const data = await response.json();
-      const formattedBanners = data.map(item => ({
-        id: item.id,
-        image: `https://picsum.photos/400/${Math.floor(Math.random() * 200) + 250}?random=${item.id}`,
-        title: item.title,
-        description: 'لورم ایپسوم متن ساختگی با تولید سادگی نامفهوم از صنعت چاپ و با استفاده از طراحان گرافیک است.',
-        views: Math.floor(Math.random() * 5000) + 500,
-        height: Math.floor(Math.random() * 150) + 200,
-      }));
-      
-      setBanners(formattedBanners);
-    } catch (error) {
-      console.error('Error fetching banners:', error);
-    }
-  };
 
   const redistributeColumns = (bannersData) => {
     const { columnCount } = columnConfig;
@@ -115,8 +159,23 @@ export default function BannerGalleryScreen() {
   };
 
   const handleBannerClick = (banner) => {
-    setSelectedBanner(banner);
-    setModalVisible(true);
+    if(banner.typ) {
+      // ذخیره idp فعلی در تاریخچه
+      setIdpHistory(prev => [...prev, idp]);
+      setIdp(banner.id);
+    } else {
+      console.log('Navigate to posts with id:', banner);
+      router.replace('/posts?q=' + encodeURIComponent(banner.q || ''));
+    }
+  };
+
+  // بازگشت به صفحه قبلی
+  const handleGoBack = () => {
+    if (idpHistory.length > 0) {
+      const previousIdp = idpHistory[idpHistory.length - 1];
+      setIdpHistory(prev => prev.slice(0, -1));
+      setIdp(previousIdp);
+    }
   };
 
   const closeModal = () => {
@@ -152,22 +211,8 @@ export default function BannerGalleryScreen() {
               <Text style={styles.bannerTitle} numberOfLines={2}>
                 {item.title}
               </Text>
-              
-              <View style={styles.viewsContainer}>
-                <Eye size={16} color={colors.textLight} />
-                <Text style={styles.viewsText}>
-                  {item.views.toLocaleString('fa-IR')} بازدید
-                </Text>
-              </View>
             </View>
           </LinearGradient>
-
-          {/* Click indicator */}
-          {/* <View style={styles.clickIndicator}>
-            <View style={styles.clickIcon}>
-              <Text style={styles.clickText}>👁</Text>
-            </View>
-          </View> */}
         </Animatable.View>
       </TouchableOpacity>
     );
@@ -175,24 +220,57 @@ export default function BannerGalleryScreen() {
 
   return (
     <ImageBackground
-      source={bg}
+      source={bgImage}
       style={styles.container}
       resizeMode="cover"
     >
       <View style={styles.overlay} />
       
       {/* Header */}
-      <Animatable.View animation="fadeInDown" style={styles.header}>
+      <View style={styles.headerContainer}>
+        <LinearGradient
+          colors={['rgba(0,0,0,0.95)', 'rgba(0,0,0,0.8)', 'rgba(0,0,0,0.4)', 'transparent']}
+          style={styles.headerGradient}
+          locations={[0, 0.5, 0.8, 1]}
+        >
+          <Animatable.View animation="fadeInDown" style={styles.header}>
+            {idpHistory.length > 0 && <TouchableOpacity 
+              style={styles.backButton} 
+              onPress={handleGoBack}
+              activeOpacity={0.8}
+            >
+              <ArrowLeft size={24} color={colors.textLight} />
+            </TouchableOpacity>}
+            <Text style={styles.headerTitle}>شهدای مقاومت</Text>
+            {idpHistory.length > 0 && <View style={{ width: 40 }} />}
+          </Animatable.View>
+        </LinearGradient>
+      </View>
+      {/* <Animatable.View animation="fadeInDown" style={styles.header}>
         <LinearGradient
           colors={['rgba(0,0,0,0.8)', 'rgba(0,0,0,0.4)']}
           style={styles.headerGradient}
         >
-          <Text style={styles.headerTitle}>بنرها</Text>
-          <Text style={styles.headerSubtitle}>
-            مجموعه بنرهای تبلیغاتی و اطلاع‌رسانی
-          </Text>
+          <View style={styles.headerContent}>
+
+            {idpHistory.length > 0 && (
+              <TouchableOpacity 
+                style={styles.backButton}
+                onPress={handleGoBack}
+              >
+                <ArrowRight size={24} color={colors.textLight} />
+              </TouchableOpacity>
+            )}
+            
+            <View style={styles.headerTextContainer}>
+              <Text style={styles.headerTitle}></Text>
+            </View>
+            
+
+            {idpHistory.length > 0 && <View style={styles.backButton} />}
+          </View>
         </LinearGradient>
-      </Animatable.View>
+      </Animatable.View> */}
 
       {/* Masonry Layout */}
       <ScrollView
@@ -208,16 +286,22 @@ export default function BannerGalleryScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.masonryContainer}>
-          {columns.map((columnBanners, columnIndex) => (
-            <View 
-              key={columnIndex} 
-              style={[styles.column, { width: columnConfig.columnWidth }]}
-            >
-              {columnBanners.map((item, index) => renderBanner(item, index))}
-            </View>
-          ))}
-        </View>
+        {loading && banners.length === 0 ? (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>در حال بارگذاری...</Text>
+          </View>
+        ) : (
+          <View style={styles.masonryContainer}>
+            {columns.map((columnBanners, columnIndex) => (
+              <View 
+                key={columnIndex} 
+                style={[styles.column, { width: columnConfig.columnWidth }]}
+              >
+                {columnBanners.map((item, index) => renderBanner(item, index))}
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
 
       {/* Modal for Banner Details */}
@@ -252,18 +336,6 @@ export default function BannerGalleryScreen() {
                     <Text style={styles.modalTitle}>
                       {selectedBanner.title}
                     </Text>
-                    <Text style={styles.modalDescription}>
-                      {selectedBanner.description}
-                    </Text>
-                    
-                    <View style={styles.modalStats}>
-                      <View style={styles.statItem}>
-                        <Eye size={20} color={colors.primary} />
-                        <Text style={styles.statText}>
-                          {selectedBanner.views.toLocaleString('fa-IR')} بازدید
-                        </Text>
-                      </View>
-                    </View>
                   </LinearGradient>
 
                   <TouchableOpacity 
@@ -290,40 +362,118 @@ export default function BannerGalleryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingBottom: Platform.OS === 'android' ? 60: 10,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.4)',
   },
-  header: {
-    paddingTop: 50,
-    paddingBottom: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    borderBottomLeftRadius: borderRadius.lg,
-    borderBottomRightRadius: borderRadius.lg,
-    overflow: 'hidden',
+  headerContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    elevation: 10,
   },
   headerGradient: {
-    ...StyleSheet.absoluteFillObject,
+    paddingTop: Platform.OS === 'android' ? 40 : 50,
+    paddingBottom: spacing.xl,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    elevation: 10,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
   },
   headerTitle: {
-    ...typography.h2,
-    color: colors.textLight,
-    textAlign: 'center',
+    fontSize: 20,
+    color: '#fff',
     fontWeight: 'bold',
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    margin: 'auto',
   },
-  headerSubtitle: {
-    ...typography.body,
-    color: colors.textLight,
-    textAlign: 'center',
-    marginTop: spacing.xs,
-    opacity: 0.8,
-  },
+  // header: {
+  //   paddingTop: Platform.OS === 'android' ? 70 : 50,
+  //   paddingBottom: spacing.lg,
+  //   paddingHorizontal: spacing.lg,
+  //   borderBottomLeftRadius: borderRadius.lg,
+  //   borderBottomRightRadius: borderRadius.lg,
+  //   overflow: 'hidden',
+  // },
+  // headerGradient: {
+  //   ...StyleSheet.absoluteFillObject,
+  // },
+  // headerContent: {
+  //   flexDirection: 'row',
+  //   alignItems: 'center',
+  //   justifyContent: 'space-between',
+  // },
+  // headerTextContainer: {
+  //   flex: 1,
+  //   alignItems: 'center',
+  // },
+  // headerTitle: {
+  //   ...typography.h2,
+  //   color: colors.textLight,
+  //   textAlign: 'center',
+  //   fontWeight: 'bold',
+  // },
+  // backButton: {
+  //   width: 44,
+  //   height: 44,
+  //   borderRadius: 22,
+  //   backgroundColor: 'rgba(212, 175, 55, 0.3)',
+  //   justifyContent: 'center',
+  //   alignItems: 'center',
+  //   borderWidth: 1,
+  //   borderColor: 'rgba(255, 255, 255, 0.2)',
+  // },
   scrollView: {
     flex: 1,
+    marginTop: Platform.OS === 'android' ? 90 : 50, // فاصله از هدر
   },
   scrollContent: {
     padding: SPACING,
+    paddingBottom: 50,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 50,
+  },
+  loadingText: {
+    color: colors.textLight,
+    fontSize: 16,
   },
   masonryContainer: {
     flexDirection: 'row',
@@ -373,44 +523,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 3,
   },
-  viewsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.sm,
-    alignSelf: 'flex-start',
-  },
-  viewsText: {
-    color: colors.textLight,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  clickIndicator: {
-    position: 'absolute',
-    top: spacing.md,
-    right: spacing.md,
-    backgroundColor: 'rgba(212, 175, 55, 0.9)',
-    borderRadius: 50,
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  clickIcon: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  clickText: {
-    fontSize: 20,
-  },
   
   // Modal Styles
   modalOverlay: {
@@ -448,35 +560,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: spacing.md,
     textAlign: 'right',
-  },
-  modalDescription: {
-    ...typography.body,
-    color: colors.textLight,
-    lineHeight: 24,
-    marginBottom: spacing.lg,
-    textAlign: 'right',
-    opacity: 0.9,
-  },
-  modalStats: {
-    flexDirection: 'row',
-    gap: spacing.lg,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: 'rgba(212, 175, 55, 0.2)',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-  },
-  statText: {
-    color: colors.textLight,
-    fontSize: 14,
-    fontWeight: '600',
   },
   closeButton: {
     position: 'absolute',
